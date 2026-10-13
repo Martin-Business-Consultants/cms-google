@@ -15,7 +15,9 @@ module Google
         admin = proc do
           scope "settings", as: "settings" do
             resource :google, only: [:show, :update], controller: "google/settings" do
-              resource :connection, only: [:create, :destroy], controller: "google/connections"
+              # Connecting is a link (new), not a form: the admin's policy lets a form go only to the CMS
+              # itself, and browsers hold a form's redirect to Google's sign-in to that too.
+              resource :connection, only: [:new, :create, :destroy], controller: "google/connections"
               resource :callback, only: :show, controller: "google/callbacks"
               resource :choices, only: :create, controller: "google/choices"
               resource :sync, only: :create, controller: "google/syncs"

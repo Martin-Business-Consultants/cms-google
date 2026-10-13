@@ -83,7 +83,7 @@
   <% if can_write %>
     <div class="cluster cluster--sm">
       <% if @settings.client? %>
-        <%= button_to (@settings.connected? ? "Connect again" : "Connect Google"), settings_google_connection_path, class: class_names("btn", "btn--primary": !@settings.connected?), form_class: "contents", data: {turbo: false} %>
+        <%= link_to (@settings.connected? ? "Connect again" : "Connect Google"), new_settings_google_connection_path, class: class_names("btn", "btn--primary": !@settings.connected?), data: {turbo: false} %>
       <% else %>
         <span class="text-small text-muted">Save the client ID and secret to connect.</span>
       <% end %>

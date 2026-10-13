@@ -31,13 +31,15 @@ RSpec.describe "Google", type: :request do
 
       get settings_google_path
       expect(response.body).to include("/settings/google/callback", "Connect Google")
+      # A link, not a form: the admin's form-action 'self' would stop the redirect to Google.
+      expect(Nokogiri::HTML5(response.body).at("a[href$='/settings/google/connection/new']")).to be_present
       expect(response.body).not_to include("shh")
     end
 
     it "signs in with Google and back, checking the state, then loads what to pick from and syncs" do
       Google::Settings.update("client_id" => "id.apps.googleusercontent.com", "client_secret" => "shh", "services" => %w[search_console analytics business_profile])
 
-      post settings_google_connection_path
+      get new_settings_google_connection_path
       location = URI(response.location)
       expect(location.host).to eq("accounts.google.com")
       query = Rack::Utils.parse_query(location.query)
@@ -48,7 +50,7 @@ RSpec.describe "Google", type: :request do
       expect(flash[:alert]).to include("didn't start here")
       expect(Google::Settings.current).not_to be_connected
 
-      post settings_google_connection_path
+      get new_settings_google_connection_path
       state = Rack::Utils.parse_query(URI(response.location).query)["state"]
       expect { get settings_google_callback_path, params: {code: "4/code", state: state} }.to have_enqueued_job(Google::SyncJob)
       expect(flash[:notice]).to include("owner@acme.example")

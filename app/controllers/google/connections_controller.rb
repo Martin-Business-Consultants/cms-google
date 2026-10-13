@@ -7,9 +7,12 @@ module Google
     include PluginGated
     plugin :google
 
-    requires_capability "settings:write", only: [:create, :destroy]
+    requires_capability "settings:write", only: [:new, :create, :destroy]
 
-    def create
+    # Off to Google's sign-in. A link (GET), since the admin's Content-Security-Policy
+    # (form-action 'self') stops a form's redirect to accounts.google.com; `create`
+    # stays for an older page still open.
+    def new
       settings = Google::Settings.current
       return redirect_to(settings_google_path, alert: "Add the OAuth client's ID and secret first") unless settings.client?
 
@@ -17,6 +20,8 @@ module Google
       redirect_to Google::Client.new(settings: settings).authorize_url(redirect_uri: settings_google_callback_url, state: session[:google_oauth_state]),
         allow_other_host: true
     end
+
+    alias_method :create, :new
 
     def destroy
       Google::Settings.disconnect
