@@ -1,0 +1,132 @@
+<% @page_title = "Google" %>
+<% can_write = Current.user.can?("settings:write") %>
+<% services = Google::SERVICES %>
+
+<%= render "layouts/shared/page_header", title: "Google" %>
+<% content_for :settings_aside do %>
+  <%= render "settings/save_box", form: "google_settings_form", capability: "settings:write" %>
+<% end %>
+
+<%= form_with url: settings_google_path, id: "google_settings_form", method: :patch, scope: :google do |form| %>
+  <%= tag.fieldset class: "stack stack--lg", disabled: !can_write do %>
+    <section class="panel panel--padded fields">
+      <div class="stack stack--xs">
+        <h2 class="heading">Sign-in</h2>
+        <p class="text-muted">The business's own Google account, signed in once, read every night. It needs an OAuth client of your own from the Google Cloud console: a Web application whose authorised redirect URI is the one below, with the Search Console API, Google Analytics Data API and Google Analytics Admin API enabled (and the Business Profile APIs once Google grants them).</p>
+      </div>
+      <%= settings_field "Authorised redirect URI", hint: "Paste this into the OAuth client in the Google Cloud console." do %>
+        <code class="text-small"><%= settings_google_callback_url %></code>
+      <% end %>
+      <div class="grid grid--2 fields-grid">
+        <%= settings_field "Client ID" do %>
+          <%= form.text_field :client_id, value: @settings.client_id, placeholder: "….apps.googleusercontent.com", autocomplete: "off" %>
+        <% end %>
+        <%= settings_field "Client secret", hint: (@settings.client_secret ? "Saved. Leave blank to keep it." : "Never shown again once saved.") do %>
+          <%= form.password_field :client_secret, value: nil, autocomplete: "new-password", data: {"1p-ignore": true} %>
+        <% end %>
+      </div>
+    </section>
+
+    <section class="panel panel--padded fields">
+      <div class="stack stack--xs">
+        <h2 class="heading">Services</h2>
+        <p class="text-muted">What to read. Add one later and connect again to grant it.</p>
+      </div>
+      <%= hidden_field_tag "google[services][]", "", id: nil %>
+      <% services.each do |key, service| %>
+        <%# herb:key key %>
+        <label class="choice">
+          <%= check_box_tag "google[services][]", key, @settings.service?(key), id: "google_service_#{key}" %>
+          <span>
+            <%= service[:name] %>
+            <span class="text-small text-muted"><%= {"search_console" => "the searches people find the site with, clicks and positions", "analytics" => "visits, where they come from, and the key events (enquiries, bookings)", "business_profile" => "Maps and Search views, calls, directions, reviews; and posting (Google grants this API on request)"}[key] %></span>
+          </span>
+        </label>
+      <% end %>
+    </section>
+
+    <% if @settings.connected? %>
+      <section class="panel panel--padded fields">
+        <div class="stack stack--xs">
+          <h2 class="heading">What it reads</h2>
+          <p class="text-muted">The property, and location, of this business.</p>
+        </div>
+        <% if @settings.service?("search_console") %>
+          <%= settings_field "Search Console property", hint: (@settings.granted?("search_console") ? nil : "Not granted: connect again.") do %>
+            <%= form.select :search_console_site, [["Choose…", ""]] + @settings.choices("search_console"), selected: @settings.search_console_site %>
+          <% end %>
+        <% end %>
+        <% if @settings.service?("analytics") %>
+          <%= settings_field "Analytics property", hint: (@settings.granted?("analytics") ? nil : "Not granted: connect again.") do %>
+            <%= form.select :analytics_property, [["Choose…", ""]] + @settings.choices("analytics"), selected: @settings.analytics_property %>
+          <% end %>
+        <% end %>
+        <% if @settings.service?("business_profile") %>
+          <%= settings_field "Business Profile location", hint: (@settings.granted?("business_profile") ? nil : "Not granted: connect again.") do %>
+            <%= form.select :business_location, [["Choose…", ""]] + @settings.choices("business_profile").map { it.first(2) }, selected: @settings.business_location %>
+          <% end %>
+        <% end %>
+      </section>
+    <% end %>
+  <% end %>
+<% end %>
+
+<section class="panel panel--padded stack stack--sm">
+  <div class="row row--between">
+    <h2 class="heading">Connection</h2>
+    <% if @settings.connected? %>
+      <span class="text-small text-muted"><%= status_tag "active" %> <%= @settings.email || "Connected" %><%= ", #{time_ago_in_words(@settings.connected_at)} ago" if @settings.connected_at %></span>
+    <% else %>
+      <span class="text-small text-muted"><%= status_tag "off" %> Not connected</span>
+    <% end %>
+  </div>
+  <% if can_write %>
+    <div class="cluster cluster--sm">
+      <% if @settings.client? %>
+        <%= button_to (@settings.connected? ? "Connect again" : "Connect Google"), settings_google_connection_path, class: class_names("btn", "btn--primary": !@settings.connected?), form_class: "contents", data: {turbo: false} %>
+      <% else %>
+        <span class="text-small text-muted">Save the client ID and secret to connect.</span>
+      <% end %>
+      <% if @settings.connected? %>
+        <%= button_to "Load the lists again", settings_google_choices_path, class: "btn", form_class: "contents" %>
+        <%= button_to "Sync now", settings_google_sync_path, class: "btn", form_class: "contents", disabled: @settings.syncing? %>
+        <%= button_to "Disconnect", settings_google_connection_path, method: :delete, class: "btn btn--plain", form_class: "contents",
+              data: {turbo_confirm: "Forget the Google sign-in? What's synced stays."} %>
+      <% end %>
+    </div>
+  <% end %>
+</section>
+
+<% if @settings.connected? %>
+  <section class="panel panel--scroll">
+    <table class="data-table">
+      <thead><tr><th>Service</th><th>Reading</th><th>Last 28 days</th><th>Synced</th></tr></thead>
+      <tbody>
+        <% services.each do |key, service| %>
+          <%# herb:key key %>
+          <% next unless @settings.service?(key) %>
+          <% error = @settings.last_sync_errors[key] %>
+          <tr>
+            <td><strong><%= service[:name] %></strong></td>
+            <% reading = {"search_console" => @settings.search_console_site, "analytics" => @settings.analytics_property_name, "business_profile" => @settings.business_location_name}[key] %>
+            <td class="text-small"><%= reading ? reading : tag.span("Not chosen", class: "text-muted") %></td>
+            <td class="text-small">
+              <% if error %>
+                <span class="text-danger"><%= error %></span>
+              <% elsif key == "search_console" && (totals = @search_console&.totals) then %>
+                <%= number_with_delimiter totals[:clicks] %> clicks · <%= number_with_delimiter totals[:impressions] %> impressions · position <%= totals[:position] %>
+              <% elsif key == "analytics" && (totals = @analytics&.totals) then %>
+                <%= number_with_delimiter totals[:sessions] %> sessions · <%= number_with_delimiter totals[:key_events] %> key events
+              <% elsif key == "business_profile" && (totals = @business_profile&.totals) then %>
+                <%= number_with_delimiter(totals[:maps] + totals[:search]) %> views · <%= number_with_delimiter totals[:calls] %> calls · <%= number_with_delimiter totals[:directions] %> directions
+              <% else %>
+                <span class="text-muted">Nothing synced yet</span>
+              <% end %>
+            </td>
+            <td class="text-small nowrap"><%= @settings.syncing? ? "Syncing…" : (@settings.last_sync_at ? time_ago_tag(@settings.last_sync_at) : "Not yet") %></td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </section>
+<% end %>
